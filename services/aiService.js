@@ -10,15 +10,29 @@ export const analyzeSymptoms = async ({
 }) => {
   try {
     const prompt = `
-You are a clinical triage assistant.
+You are a hospital emergency triage classifier.
 
 Return ONLY JSON:
 
 {
   "severity": "LOW | MEDIUM | HIGH | CRITICAL",
-  "predictedDisease": "short disease category",
-  "doctorSuggestion": "one-line clinical next step"
+  "predictedDisease": "",
+  "doctorSuggestion": ""
 }
+
+Rules:
+
+CRITICAL if:
+- chest pain
+- oxygen ≤ 90
+- heart rate ≥ 120
+
+HIGH if:
+- oxygen ≤ 94
+- fever ≥ 100
+- breathing difficulty
+
+Otherwise MEDIUM or LOW depending on symptoms severity.
 
 Patient:
 
@@ -26,13 +40,13 @@ Age: ${age}
 Gender: ${gender}
 Symptoms: ${symptoms}
 Duration: ${duration}
-Existing conditions: ${existingConditions}
+Conditions: ${existingConditions}
 
 Vitals:
-Heart Rate: ${vitals?.heartRate}
-Blood Pressure: ${vitals?.bloodPressure}
-Oxygen Level: ${vitals?.oxygenLevel}
-Temperature: ${vitals?.temperature}
+HR ${vitals?.heartRate}
+BP ${vitals?.bloodPressure}
+O2 ${vitals?.oxygenLevel}
+Temp ${vitals?.temperature}
 `;
 
     const response = await axios.post(
@@ -44,7 +58,8 @@ Temperature: ${vitals?.temperature}
             role: "user",
             content: prompt
           }
-        ]
+        ],
+        max_tokens: 120
       },
       {
         headers: {
@@ -52,28 +67,33 @@ Temperature: ${vitals?.temperature}
           "Content-Type": "application/json",
           "HTTP-Referer": "http://localhost:5000",
           "X-Title": "AI Healthcare Triage System"
-        }
+        },
+        timeout: 7000
       }
     );
 
     const text = response.data.choices[0].message.content;
 
-const cleaned = text.replace(/```json|```/g, "").trim();
+    const cleaned = text.replace(/```json|```/g, "").trim();
 
-const jsonStart = cleaned.indexOf("{");
-const jsonEnd = cleaned.lastIndexOf("}") + 1;
+    const match = cleaned.match(/\{[\s\S]*\}/);
 
-const safeJSON = cleaned.slice(jsonStart, jsonEnd);
+    if (!match) {
+      throw new Error("No JSON returned from AI");
+    }
 
-return JSON.parse(safeJSON);
-    
+    const parsed = JSON.parse(match[0]);
+
+    parsed.severity = parsed.severity?.toUpperCase();
+
+    return parsed;
   } catch (error) {
     console.error("AI analysis failed:", error.message);
 
     return {
-      severity: "LOW",
-      predictedDisease: "General checkup recommended",
-      doctorSuggestion: "Further evaluation required"
+      severity: "CRITICAL",
+      predictedDisease: "Possible cardiac emergency",
+      doctorSuggestion: "Immediate ECG recommended"
     };
   }
 };
@@ -125,10 +145,13 @@ Temp ${patient.vitals?.temperature}
 
     const cleaned = text.replace(/```json|```/g, "").trim();
 
-    const jsonStart = cleaned.indexOf("{");
-    const jsonEnd = cleaned.lastIndexOf("}") + 1;
+    const match = cleaned.match(/\{[\s\S]*\}/);
 
-    return JSON.parse(cleaned.slice(jsonStart, jsonEnd));
+    if (!match) {
+      throw new Error("No JSON returned from explanation model");
+    }
+
+    return JSON.parse(match[0]);
   } catch (error) {
     console.error("Explanation generation failed:", error.message);
 
