@@ -63,7 +63,6 @@ Temp ${vitals?.temperature}
       },
       {
         headers: {
-          Authorization: `Bearer ${"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"}`,
           "Content-Type": "application/json",
           "HTTP-Referer": "http://localhost:5000",
           "X-Title": "AI Healthcare Triage System"
